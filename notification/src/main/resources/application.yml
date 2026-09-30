@@ -33,7 +33,15 @@ spring:
       simple:
         acknowledge-mode: auto
         prefetch: 10
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0
+          max-interval: 5000ms
 
 logging:
   level:
+    org.springframework.amqp: INFO
     com.example.notification: INFO

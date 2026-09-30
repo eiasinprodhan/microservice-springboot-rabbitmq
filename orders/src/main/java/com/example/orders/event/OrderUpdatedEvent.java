@@ -1,4 +1,4 @@
-package com.example.orders.dto;
+package com.example.orders.event;
 
 import com.example.orders.entity.OrderStatus;
 
@@ -6,9 +6,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public record OrderResponse(
+public record OrderUpdatedEvent(
 
-        UUID id,
+        UUID eventId,
+
+        UUID orderId,
 
         String productName,
 
@@ -16,11 +18,9 @@ public record OrderResponse(
 
         String customerEmail,
 
-        OrderStatus status,
+        OrderStatus previousStatus,
 
-        String cancellationReason,
-
-        LocalDateTime createdAt,
+        OrderStatus newStatus,
 
         LocalDateTime updatedAt
 ) {

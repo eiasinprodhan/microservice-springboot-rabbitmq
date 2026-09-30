@@ -1,5 +1,7 @@
 package com.example.notification.dto;
 
+import com.example.notification.entity.NotificationType;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -13,7 +15,13 @@ public record NotificationResponse(
 
         String customerEmail,
 
+        NotificationType type,
+
         String message,
+
+        boolean isRead,
+
+        LocalDateTime readAt,
 
         LocalDateTime createdAt
 ) {

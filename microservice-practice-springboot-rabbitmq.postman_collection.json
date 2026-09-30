@@ -1,0 +1,832 @@
+{
+  "info": {
+    "_postman_id": "a7b8c9d0-1234-4ef5-89ab-cdef01234567",
+    "name": "Spring Boot Microservices Practice + RabbitMQ (No Docker)",
+    "description": "Complete Postman Collection for Order Service (:8081) and Notification Service (:8082), covering full CRUD, Topic/Direct/Fanout Exchanges, Idempotent Consumer, Wildcard Audit Logs, and Retry + Dead Letter Queue (DLQ).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "orderServiceUrl",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "notificationServiceUrl",
+      "value": "http://localhost:8082",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "type": "string"
+    },
+    {
+      "key": "notificationId",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "type": "string"
+    },
+    {
+      "key": "dlqId",
+      "value": "00000000-0000-0000-0000-000000000000",
+      "type": "string"
+    },
+    {
+      "key": "eventId",
+      "value": "11111111-2222-3333-4444-555555555555",
+      "type": "string"
+    },
+    {
+      "key": "customerEmail",
+      "value": "alice@example.com",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Order Service (:8081) - CRUD & Lifecycle",
+      "item": [
+        {
+          "name": "1.1 Health Check (Order Service)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/test",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "test"
+              ]
+            },
+            "description": "Verify that Order Service is up and running on port 8081."
+          }
+        },
+        {
+          "name": "1.2 Create Order (Publishes OrderCreatedEvent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.id) {",
+                  "        pm.collectionVariables.set('orderId', jsonData.id);",
+                  "        console.log('Saved orderId:', jsonData.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"MacBook Pro M4 Max\",\n  \"amount\": 3499.99,\n  \"customerEmail\": \"{{customerEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "Creates a new order and publishes OrderCreatedEvent to 'order.exchange' with routing key 'order.created'. Automatically saves the returned 'id' to {{orderId}}."
+          }
+        },
+        {
+          "name": "1.3 Get All Orders (Paginated & Filtered)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders?page=0&size=10&sortBy=createdAt&sortDir=desc",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PROCESSING",
+                  "disabled": true
+                },
+                {
+                  "key": "customerEmail",
+                  "value": "{{customerEmail}}",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt"
+                },
+                {
+                  "key": "sortDir",
+                  "value": "desc"
+                }
+              ]
+            },
+            "description": "Fetch paginated orders with optional status and customerEmail filters."
+          }
+        },
+        {
+          "name": "1.4 Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Fetch a single order by UUID. Note how status automatically transitions from CREATED to PROCESSING after notification-service sends the callback event."
+          }
+        },
+        {
+          "name": "1.5 Get Orders by Customer Email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/customer/{{customerEmail}}",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "customer",
+                "{{customerEmail}}"
+              ]
+            },
+            "description": "Fetch all orders placed by a specific customer email."
+          }
+        },
+        {
+          "name": "1.6 Get Order Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/stats",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "stats"
+              ]
+            },
+            "description": "Get total orders, total revenue (excluding cancelled orders), and order counts grouped by status."
+          }
+        },
+        {
+          "name": "1.7 Update Order Details (Publishes OrderUpdatedEvent)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"MacBook Pro M4 Max (64GB RAM)\",\n  \"amount\": 3899.99,\n  \"customerEmail\": \"{{customerEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Updates productName, amount, and customerEmail, and publishes OrderUpdatedEvent ('order.updated')."
+          }
+        },
+        {
+          "name": "1.8 Update Order Status (Publishes OrderUpdatedEvent)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}"
+            },
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/{{orderId}}/status",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "status"
+              ]
+            },
+            "description": "Updates the order status (CREATED, PROCESSING, COMPLETED, CANCELLED) and publishes OrderUpdatedEvent ('order.updated')."
+          }
+        },
+        {
+          "name": "1.9 Cancel Order (Publishes OrderCancelledEvent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer requested cancellation before shipment\"\n}"
+            },
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/{{orderId}}/cancel",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancels an order with a reason and publishes OrderCancelledEvent ('order.cancelled'). Note: Completed orders cannot be cancelled."
+          }
+        },
+        {
+          "name": "1.10 Delete Order",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Deletes an order by ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Order Service (:8081) - RabbitMQ Advanced Patterns",
+      "item": [
+        {
+          "name": "2.1 Republish Order Event (Test Consumer Idempotency)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/{{orderId}}/republish?eventId={{eventId}}",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "republish"
+              ],
+              "query": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}",
+                  "description": "Send the same eventId twice to verify Notification Service ignores the duplicate!"
+                }
+              ]
+            },
+            "description": "Republishes OrderCreatedEvent with a specific eventId. Send this request twice with the same eventId to verify that Notification Service deduplicates the second message."
+          }
+        },
+        {
+          "name": "2.2 Broadcast System Alert (Test Fanout Exchange)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Scheduled Maintenance\",\n  \"message\": \"Platform upgrade scheduled at 02:00 UTC. Zero downtime expected.\"\n}"
+            },
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/messaging/broadcast",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "messaging",
+                "broadcast"
+              ]
+            },
+            "description": "Publishes SystemBroadcastEvent to Fanout Exchange ('order.broadcast.exchange'), which routes copies to both 'notification.broadcast.email.queue' and 'notification.broadcast.sms.queue'."
+          }
+        },
+        {
+          "name": "2.3 Simulate Poison Pill Order (Test Retry + Dead Letter Queue)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.id) {",
+                  "        pm.collectionVariables.set('orderId', jsonData.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{orderServiceUrl}}/api/orders/messaging/simulate-dlq?customerEmail={{customerEmail}}",
+              "host": [
+                "{{orderServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "messaging",
+                "simulate-dlq"
+              ],
+              "query": [
+                {
+                  "key": "customerEmail",
+                  "value": "{{customerEmail}}"
+                }
+              ]
+            },
+            "description": "Creates an order with productName='FAIL-POISON-PILL-PRODUCT'. Notification Service will fail 3 times with exponential backoff (1s, 2s, 4s) and then route the message to the Dead Letter Queue ('notification.order.dlq')."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Notification Service (:8082) - Notifications",
+      "item": [
+        {
+          "name": "3.1 Health Check (Notification Service)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/test",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "test"
+              ]
+            },
+            "description": "Verify that Notification Service is up and running on port 8082."
+          }
+        },
+        {
+          "name": "3.2 Get All Notifications (Paginated & Filtered)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.content && jsonData.content.length > 0) {",
+                  "        pm.collectionVariables.set('notificationId', jsonData.content[0].id);",
+                  "        pm.collectionVariables.set('eventId', jsonData.content[0].eventId);",
+                  "        console.log('Saved notificationId:', jsonData.content[0].id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications?page=0&size=10",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "customerEmail",
+                  "value": "{{customerEmail}}",
+                  "disabled": true
+                },
+                {
+                  "key": "isRead",
+                  "value": "false",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "ORDER_CREATED",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Fetch paginated notifications. Automatically saves the first notification's 'id' to {{notificationId}}."
+          }
+        },
+        {
+          "name": "3.3 Get Notification Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/stats",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "stats"
+              ]
+            },
+            "description": "Get total notifications, read/unread counts, Dead Letter Queue counts, wildcard audit log counts, and breakdown by NotificationType."
+          }
+        },
+        {
+          "name": "3.4 Get Notifications by Order ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/order/{{orderId}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "order",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Get all notifications associated with {{orderId}}."
+          }
+        },
+        {
+          "name": "3.5 Get Notifications by Customer Email",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/customer/{{customerEmail}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "customer",
+                "{{customerEmail}}"
+              ]
+            },
+            "description": "Get all notifications sent to a specific customer email."
+          }
+        },
+        {
+          "name": "3.6 Get Notification by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/{{notificationId}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "{{notificationId}}"
+              ]
+            },
+            "description": "Fetch a single notification by its UUID."
+          }
+        },
+        {
+          "name": "3.7 Create Custom Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.id) {",
+                  "        pm.collectionVariables.set('notificationId', jsonData.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"customerEmail\": \"{{customerEmail}}\",\n  \"message\": \"Your package is out for delivery with express courier.\"\n}"
+            },
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications"
+              ]
+            },
+            "description": "Manually create a custom notification."
+          }
+        },
+        {
+          "name": "3.8 Mark Notification as Read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/{{notificationId}}/read",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            },
+            "description": "Marks a single notification as read and sets 'readAt' timestamp."
+          }
+        },
+        {
+          "name": "3.9 Mark All Notifications as Read for Customer",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/read-all?customerEmail={{customerEmail}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "read-all"
+              ],
+              "query": [
+                {
+                  "key": "customerEmail",
+                  "value": "{{customerEmail}}"
+                }
+              ]
+            },
+            "description": "Marks all unread notifications for the given customerEmail as read."
+          }
+        },
+        {
+          "name": "3.10 Delete Notification",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/{{notificationId}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "{{notificationId}}"
+              ]
+            },
+            "description": "Deletes a notification by UUID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Notification Service (:8082) - DLQ & Wildcard Audit",
+      "item": [
+        {
+          "name": "4.1 Get All Dead Letter Queue (DLQ) Messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (Array.isArray(jsonData) && jsonData.length > 0) {",
+                  "        pm.collectionVariables.set('dlqId', jsonData[0].id);",
+                  "        console.log('Saved dlqId:', jsonData[0].id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/dlq",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "dlq"
+              ],
+              "query": [
+                {
+                  "key": "resolved",
+                  "value": "false",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lists all poison-pill/failed messages captured from 'notification.order.dlq'. Automatically saves the first DLQ message ID to {{dlqId}}."
+          }
+        },
+        {
+          "name": "4.2 Get DLQ Message by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/dlq/{{dlqId}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "dlq",
+                "{{dlqId}}"
+              ]
+            },
+            "description": "Get details of a specific Dead Letter Queue message by UUID."
+          }
+        },
+        {
+          "name": "4.3 Resolve DLQ Message",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/dlq/{{dlqId}}/resolve",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "dlq",
+                "{{dlqId}}",
+                "resolve"
+              ]
+            },
+            "description": "Marks a Dead Letter Queue message as resolved and records 'resolvedAt'."
+          }
+        },
+        {
+          "name": "4.4 Delete DLQ Message",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/dlq/{{dlqId}}",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "dlq",
+                "{{dlqId}}"
+              ]
+            },
+            "description": "Deletes a Dead Letter Queue record by UUID."
+          }
+        },
+        {
+          "name": "4.5 Get Topic Wildcard ('order.*') Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationServiceUrl}}/api/notifications/audit",
+              "host": [
+                "{{notificationServiceUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "routingKey",
+                  "value": "order.created",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lists all order events captured by the wildcard binding ('order.*') on 'notification.order.audit.queue'."
+          }
+        }
+      ]
+    }
+  ]
+}

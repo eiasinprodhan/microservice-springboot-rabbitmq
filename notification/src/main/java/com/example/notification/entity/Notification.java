@@ -10,11 +10,9 @@ import java.util.UUID;
 @Table(
         name = "notifications",
         indexes = {
-                @Index(
-                        name = "idx_notification_event_id",
-                        columnList = "event_id",
-                        unique = true
-                )
+                @Index(name = "idx_notification_event_id", columnList = "event_id", unique = true),
+                @Index(name = "idx_notification_order_id", columnList = "order_id"),
+                @Index(name = "idx_notification_customer_email", columnList = "customer_email")
         }
 )
 @Getter
@@ -28,24 +26,30 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(
-            name = "event_id",
-            nullable = false,
-            unique = true
-    )
+    @Column(name = "event_id", nullable = false, unique = true)
     private UUID eventId;
 
-    @Column(nullable = false)
+    @Column(name = "order_id")
     private UUID orderId;
 
-    @Column(nullable = false)
+    @Column(name = "customer_email", nullable = false)
     private String customerEmail;
 
-    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 40)
+    @Builder.Default
+    private NotificationType type = NotificationType.ORDER_CREATED;
+
+    @Column(nullable = false, length = 500)
     private String message;
 
-    @Column(nullable = false,
-            updatable = false)
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean isRead = false;
+
+    private LocalDateTime readAt;
+
+    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @PrePersist
